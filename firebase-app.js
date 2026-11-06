@@ -247,13 +247,14 @@ function render() {
             { merge: true }
           );
         } catch (error) {
-          console.error("Payment could not be saved:", error);
+  console.error("Payment could not be saved:", error);
 
-            "The payment could not be saved. Please check your administrator login."
-          );
+  alert(
+    "The payment could not be saved. Please check your administrator login."
+  );
 
-          checkbox.disabled = false;
-        }
+  checkbox.disabled = false;
+}
       });
     });
 
