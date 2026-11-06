@@ -1,0 +1,12 @@
+{
+  "name": "Loan Payment Tracker",
+  "short_name": "Loan Tracker",
+  "description": "Track the monthly repayment status and outstanding balance of the loan.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f1f5f9",
+  "theme_color": "#0f172a",
+  "orientation": "portrait",
+  "icons": []
+}
