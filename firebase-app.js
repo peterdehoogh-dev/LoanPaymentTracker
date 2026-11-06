@@ -27,31 +27,27 @@ const firebaseConfig = {
 
 const ADMIN_UID = "dHZuYi41gXNgoNvOSGjR5t2LjZ23";
 
+const PRINCIPAL = 10000;
+const ANNUAL_RATE = 0.083;
+const MONTHLY_RATE = ANNUAL_RATE / 12;
+const MONTHLY_PAYMENT = 176;
+const NUMBER_OF_MONTHS = 72;
+
+
 const firebaseApp = initializeApp(firebaseConfig);
 const database = getFirestore(firebaseApp);
 const authentication = getAuth(firebaseApp);
 
-const paymentDocument = doc(database, "loan", "payments");
-const ADMIN_UID = "dHZuYi41gXNgoNvOSGjR5t2LjZ23";
+const paymentDocument = doc(
+  database,
+  "loan",
+  "payments"
+);
 
-const firebaseApp = initializeApp(firebaseConfig);
-const database = getFirestore(firebaseApp);
-const authentication = getAuth(firebaseApp);
-
-const paymentDocument = doc(database, "loan", "payments");
-
-const PRINCIPAL = 10000;
-const MONTHLY_RATE = 0.083 / 12;
-const MONTHLY_PAYMENT = 176;
-
-const PRINCIPAL = 10000;
-const MONTHLY_RATE = 0.083 / 12;
-const MONTHLY_PAYMENT = 176;
 
 let paid = {};
 let currentUser = null;
 let schedule = [];
-let balance = PRINCIPAL;
 
 
 const euro = value =>
@@ -62,227 +58,404 @@ const euro = value =>
   });
 
 
-for (let index = 0; index < 72; index++) {
-  const startingBalance = balance;
-  const interest = startingBalance * MONTHLY_RATE;
-  const principalPaid = MONTHLY_PAYMENT - interest;
+function createSchedule() {
+  let balance = PRINCIPAL;
+  const result = [];
 
-  balance = startingBalance - principalPaid;
+  for (let index = 0; index < NUMBER_OF_MONTHS; index++) {
+    const startingBalance = balance;
+    const interest = startingBalance * MONTHLY_RATE;
+    const principalPaid = MONTHLY_PAYMENT - interest;
 
-  schedule.push({
-    number: index + 1,
-    loanYear: Math.floor(index / 12) + 1,
-    dueDate: new Date(2026, 9 + index, 27),
-    startingBalance,
-    principalPaid,
-    remainingBalance: balance
-  });
+    balance = Math.max(
+      0,
+      startingBalance - principalPaid
+    );
+
+    result.push({
+      number: index + 1,
+      loanYear: Math.floor(index / 12) + 1,
+      dueDate: new Date(2026, 9 + index, 27),
+      startingBalance,
+      principalPaid,
+      remainingBalance: balance
+    });
+  }
+
+  return result;
 }
 
 
-function isAdmin() {
-  return currentUser && currentUser.uid === ADMIN_UID;
+schedule = createSchedule();
+
+
+function userIsAdmin() {
+  return Boolean(
+    currentUser &&
+    currentUser.uid === ADMIN_UID
+  );
 }
 
 
-function isOverdue(payment) {
+function paymentIsOverdue(payment) {
   const today = new Date();
+
   today.setHours(23, 59, 59, 999);
 
-  return payment.dueDate < today && !paid[payment.number];
+  return (
+    payment.dueDate < today &&
+    !paid[payment.number]
+  );
 }
 
 
 function updateAdminButton() {
-  const button = document.getElementById("admin");
+  const adminButton =
+    document.getElementById("admin");
 
-  if (isAdmin()) {
-    button.textContent = "Admin logout";
-  } else {
-    button.textContent = "Admin login";
+  if (!adminButton) {
+    return;
   }
+
+  adminButton.textContent =
+    userIsAdmin()
+      ? "Admin logout"
+      : "Admin login";
 }
 
 
-function render() {
-  const year = Number(document.getElementById("year").value);
+function updateHeader() {
+  const totalPrincipalPaid =
+    schedule.reduce(
+      (total, payment) => {
+        if (paid[payment.number]) {
+          return total + payment.principalPaid;
+        }
 
-  const visiblePayments = schedule.filter(
-    payment => payment.loanYear === year
-  );
+        return total;
+      },
+      0
+    );
 
-  const totalPrincipalPaid = schedule.reduce(
-    (total, payment) =>
-      total +
-      (paid[payment.number] ? payment.principalPaid : 0),
-    0
-  );
+  const outstandingBalance =
+    Math.max(
+      0,
+      PRINCIPAL - totalPrincipalPaid
+    );
 
   document.getElementById("balance").textContent =
-    euro(Math.max(0, PRINCIPAL - totalPrincipalPaid));
+    euro(outstandingBalance);
 
 
-  const overduePayments = schedule.filter(isOverdue);
-  const alertBox = document.getElementById("alert");
+  const overduePayments =
+    schedule.filter(paymentIsOverdue);
+
+  const alertBox =
+    document.getElementById("alert");
+
+  const alertTitle =
+    document.getElementById("alertTitle");
+
+  const alertText =
+    document.getElementById("alertText");
+
 
   if (overduePayments.length > 0) {
     alertBox.className = "alert bad";
 
-    document.getElementById("alertTitle").textContent =
+    alertTitle.textContent =
       "Overdue payment";
 
-    document.getElementById("alertText").textContent =
+    alertText.textContent =
       overduePayments.length +
       " payment" +
-      (overduePayments.length === 1 ? " is" : "s are") +
+      (
+        overduePayments.length === 1
+          ? " is"
+          : "s are"
+      ) +
       " overdue";
   } else {
     alertBox.className = "alert";
 
-    document.getElementById("alertTitle").textContent =
+    alertTitle.textContent =
       "Payments up to date";
 
-    document.getElementById("alertText").textContent =
+    alertText.textContent =
       "No overdue instalments";
   }
+}
 
 
-  document.getElementById("yearTitle").textContent =
-    "Loan year " + year;
+function createStatusElement(payment) {
+  const paymentIsPaid =
+    Boolean(paid[payment.number]);
 
-  document.getElementById("period").textContent =
-    visiblePayments[0].dueDate.toLocaleDateString("en-GB", {
-      month: "long",
-      year: "numeric"
-    }) +
-    " to " +
-    visiblePayments[
-      visiblePayments.length - 1
-    ].dueDate.toLocaleDateString("en-GB", {
-      month: "long",
-      year: "numeric"
-    }) +
-    " · Due on the 27th of each month";
+  const overdue =
+    paymentIsOverdue(payment);
 
 
-  let tableRows = "";
+  if (userIsAdmin()) {
+    const label =
+      document.createElement("label");
 
-  visiblePayments.forEach(payment => {
-    const paymentIsPaid = Boolean(paid[payment.number]);
-    const paymentIsOverdue = isOverdue(payment);
-
-    let status;
-
-    if (isAdmin()) {
-      status =
-        '<label class="' +
-        (paymentIsOverdue
-          ? "overdue"
-          : paymentIsPaid
-          ? "paid"
-          : "pending") +
-        '">' +
-        '<input type="checkbox" data-number="' +
-        payment.number +
-        '" ' +
-        (paymentIsPaid ? "checked" : "") +
-        "> €176.00</label>";
-    } else {
-      status =
-        '<span class="' +
-        (paymentIsOverdue
-          ? "overdue"
-          : paymentIsPaid
-          ? "paid"
-          : "pending") +
-        '">' +
-        (paymentIsPaid
-          ? "✓ Paid"
-          : paymentIsOverdue
-          ? "€176.00 · Overdue"
-          : "Not yet due") +
-        "</span>";
-    }
-
-    tableRows +=
-      "<tr>" +
-      "<td><strong>" +
-      payment.dueDate.toLocaleDateString("en-GB", {
-        month: "long",
-        year: "numeric"
-      }) +
-      "</strong><br><small>Due 27th</small></td>" +
-      "<td>" +
-      euro(payment.startingBalance) +
-      "</td>" +
-      "<td><strong>" +
-      euro(payment.remainingBalance) +
-      "</strong></td>" +
-      "<td>" +
-      status +
-      "</td>" +
-      "</tr>";
-  });
+    label.className =
+      overdue
+        ? "overdue"
+        : paymentIsPaid
+        ? "paid"
+        : "pending";
 
 
-  document.getElementById("rows").innerHTML = tableRows;
+    const checkbox =
+      document.createElement("input");
 
-  document
-    .querySelectorAll("input[data-number]")
-    .forEach(checkbox => {
-      checkbox.addEventListener("change", async () => {
-        if (!isAdmin()) {
+    checkbox.type = "checkbox";
+    checkbox.checked = paymentIsPaid;
+    checkbox.dataset.number =
+      String(payment.number);
+
+    checkbox.style.marginRight = "8px";
+
+
+    checkbox.addEventListener(
+      "change",
+      async () => {
+        if (!userIsAdmin()) {
           return;
         }
 
-        const paymentNumber = checkbox.dataset.number;
+        checkbox.disabled = true;
+
+        const paymentNumber =
+          checkbox.dataset.number;
+
         const updatedPayments = {
           ...paid,
           [paymentNumber]: checkbox.checked
         };
 
-        checkbox.disabled = true;
 
         try {
           await setDoc(
             paymentDocument,
             {
               paid: updatedPayments,
-              updatedAt: new Date().toISOString(),
-              updatedBy: currentUser.uid
+              updatedAt:
+                new Date().toISOString(),
+              updatedBy:
+                currentUser.uid
             },
-            { merge: true }
+            {
+              merge: true
+            }
           );
         } catch (error) {
-  console.error("Payment could not be saved:", error);
+          console.error(
+            "Payment could not be saved:",
+            error
+          );
 
-  alert(
-    "The payment could not be saved. Please check your administrator login."
-  );
+          alert(
+            "The payment could not be saved. " +
+            "Please check your administrator login."
+          );
 
-  checkbox.disabled = false;
-}
-      });
-    });
-
-  updateAdminButton();
-}
+          checkbox.disabled = false;
+        }
+      }
+    );
 
 
-function createLoginWindow() {
-  const existingWindow = document.getElementById("loginOverlay");
+    label.appendChild(checkbox);
 
-  if (existingWindow) {
-    existingWindow.remove();
+    label.appendChild(
+      document.createTextNode(
+        euro(MONTHLY_PAYMENT)
+      )
+    );
+
+    return label;
   }
 
-  const overlay = document.createElement("div");
+
+  const status =
+    document.createElement("span");
+
+  status.className =
+    overdue
+      ? "overdue"
+      : paymentIsPaid
+      ? "paid"
+      : "pending";
+
+
+  if (paymentIsPaid) {
+    status.textContent = "✓ Paid";
+  } else if (overdue) {
+    status.textContent =
+      euro(MONTHLY_PAYMENT) +
+      " · Overdue";
+  } else {
+    status.textContent =
+      "Not yet due";
+  }
+
+  return status;
+}
+
+
+function renderTable() {
+  const selectedYear =
+    Number(
+      document.getElementById("year").value
+    );
+
+  const visiblePayments =
+    schedule.filter(
+      payment =>
+        payment.loanYear === selectedYear
+    );
+
+
+  document.getElementById(
+    "yearTitle"
+  ).textContent =
+    "Loan year " + selectedYear;
+
+
+  const firstPayment =
+    visiblePayments[0];
+
+  const lastPayment =
+    visiblePayments[
+      visiblePayments.length - 1
+    ];
+
+
+  document.getElementById(
+    "period"
+  ).textContent =
+    firstPayment.dueDate.toLocaleDateString(
+      "en-GB",
+      {
+        month: "long",
+        year: "numeric"
+      }
+    ) +
+    " to " +
+    lastPayment.dueDate.toLocaleDateString(
+      "en-GB",
+      {
+        month: "long",
+        year: "numeric"
+      }
+    ) +
+    " · Due on the 27th of each month";
+
+
+  const tableBody =
+    document.getElementById("rows");
+
+  tableBody.innerHTML = "";
+
+
+  visiblePayments.forEach(payment => {
+    const row =
+      document.createElement("tr");
+
+
+    if (paid[payment.number]) {
+      row.style.background = "#f0fdf4";
+    }
+
+
+    const monthCell =
+      document.createElement("td");
+
+    const monthName =
+      payment.dueDate.toLocaleDateString(
+        "en-GB",
+        {
+          month: "long",
+          year: "numeric"
+        }
+      );
+
+    monthCell.innerHTML =
+      "<strong>" +
+      monthName +
+      "</strong><br>" +
+      "<small>Due 27th</small>";
+
+
+    const startingBalanceCell =
+      document.createElement("td");
+
+    startingBalanceCell.textContent =
+      euro(payment.startingBalance);
+
+
+    const remainingBalanceCell =
+      document.createElement("td");
+
+    remainingBalanceCell.innerHTML =
+      "<strong>" +
+      euro(payment.remainingBalance) +
+      "</strong>";
+
+
+    const statusCell =
+      document.createElement("td");
+
+    statusCell.appendChild(
+      createStatusElement(payment)
+    );
+
+
+    row.appendChild(monthCell);
+    row.appendChild(startingBalanceCell);
+    row.appendChild(remainingBalanceCell);
+    row.appendChild(statusCell);
+
+    tableBody.appendChild(row);
+  });
+}
+
+
+function render() {
+  updateHeader();
+  updateAdminButton();
+  renderTable();
+}
+
+
+function showLoginWindow() {
+  const existingOverlay =
+    document.getElementById(
+      "loginOverlay"
+    );
+
+  if (existingOverlay) {
+    existingOverlay.remove();
+  }
+
+
+  const overlay =
+    document.createElement("div");
+
   overlay.id = "loginOverlay";
 
   overlay.style.cssText =
-    "position:fixed;inset:0;background:rgba(15,23,42,.72);" +
-    "display:flex;align-items:center;justify-content:center;" +
-    "padding:20px;z-index:9999;";
+    "position:fixed;" +
+    "inset:0;" +
+    "background:rgba(15,23,42,.75);" +
+    "display:flex;" +
+    "align-items:center;" +
+    "justify-content:center;" +
+    "padding:20px;" +
+    "z-index:9999;";
+
 
   overlay.innerHTML = `
     <div style="
@@ -293,13 +466,24 @@ function createLoginWindow() {
       border-radius:18px;
       box-shadow:0 20px 50px rgba(0,0,0,.3);
     ">
-      <h2 style="margin-top:0;">Administrator login</h2>
+      <h2 style="margin-top:0;">
+        Administrator login
+      </h2>
 
-      <p style="color:#64748b;font-size:14px;">
-        Only the loan administrator can change payment status.
+      <p style="
+        color:#64748b;
+        font-size:14px;
+        line-height:1.5;
+      ">
+        Only the loan administrator can
+        change payment status.
       </p>
 
-      <label style="display:block;margin-top:18px;font-weight:bold;">
+      <label style="
+        display:block;
+        margin-top:18px;
+        font-weight:bold;
+      ">
         Email address
       </label>
 
@@ -317,7 +501,11 @@ function createLoginWindow() {
         "
       >
 
-      <label style="display:block;margin-top:15px;font-weight:bold;">
+      <label style="
+        display:block;
+        margin-top:15px;
+        font-weight:bold;
+      ">
         Password
       </label>
 
@@ -353,6 +541,7 @@ function createLoginWindow() {
       ">
         <button
           id="cancelLogin"
+          type="button"
           style="
             background:#e2e8f0;
             color:#0f172a;
@@ -361,85 +550,139 @@ function createLoginWindow() {
           Cancel
         </button>
 
-        <button id="submitLogin">
+        <button
+          id="submitLogin"
+          type="button"
+        >
           Sign in
         </button>
       </div>
     </div>
   `;
 
+
   document.body.appendChild(overlay);
 
-  document.getElementById("cancelLogin").onclick = () => {
-    overlay.remove();
-  };
 
-  document.getElementById("submitLogin").onclick = async () => {
-    const email =
-      document.getElementById("loginEmail").value.trim();
-
-    const password =
-      document.getElementById("loginPassword").value;
-
-    const errorMessage =
-      document.getElementById("loginError");
-
-    errorMessage.style.display = "none";
-
-    try {
-      await signInWithEmailAndPassword(
-        authentication,
-        email,
-        password
-      );
-
+  document.getElementById(
+    "cancelLogin"
+  ).addEventListener(
+    "click",
+    () => {
       overlay.remove();
-    } catch (error) {
-      console.error("Login failed:", error);
-
-      errorMessage.textContent =
-        "Login failed. Check your email address and password.";
-
-      errorMessage.style.display = "block";
     }
-  };
+  );
+
+
+  document.getElementById(
+    "submitLogin"
+  ).addEventListener(
+    "click",
+    async () => {
+      const email =
+        document
+          .getElementById("loginEmail")
+          .value
+          .trim();
+
+      const password =
+        document
+          .getElementById("loginPassword")
+          .value;
+
+      const errorMessage =
+        document.getElementById(
+          "loginError"
+        );
+
+
+      errorMessage.style.display =
+        "none";
+
+
+      try {
+        await signInWithEmailAndPassword(
+          authentication,
+          email,
+          password
+        );
+
+        overlay.remove();
+      } catch (error) {
+        console.error(
+          "Login failed:",
+          error
+        );
+
+        errorMessage.textContent =
+          "Login failed. Check your email address and password.";
+
+        errorMessage.style.display =
+          "block";
+      }
+    }
+  );
 }
 
 
 document
   .getElementById("year")
-  .addEventListener("change", render);
+  .addEventListener(
+    "change",
+    render
+  );
 
 
 document
   .getElementById("admin")
-  .addEventListener("click", async () => {
-    if (currentUser) {
-      await signOut(authentication);
-    } else {
-      createLoginWindow();
+  .addEventListener(
+    "click",
+    async () => {
+      if (currentUser) {
+        await signOut(authentication);
+      } else {
+        showLoginWindow();
+      }
     }
-  });
+  );
 
 
-onAuthStateChanged(authentication, user => {
-  currentUser = user;
+onAuthStateChanged(
+  authentication,
+  async user => {
+    if (
+      user &&
+      user.uid !== ADMIN_UID
+    ) {
+      await signOut(authentication);
 
-  if (currentUser && currentUser.uid !== ADMIN_UID) {
-    signOut(authentication);
-    alert("This account does not have administrator access.");
-    return;
+      currentUser = null;
+
+      alert(
+        "This account does not have administrator access."
+      );
+
+      render();
+
+      return;
+    }
+
+    currentUser = user;
+
+    render();
   }
-
-  render();
-});
+);
 
 
 onSnapshot(
   paymentDocument,
   documentSnapshot => {
     if (documentSnapshot.exists()) {
-      paid = documentSnapshot.data().paid || {};
+      const documentData =
+        documentSnapshot.data();
+
+      paid =
+        documentData.paid || {};
     } else {
       paid = {};
     }
@@ -447,12 +690,25 @@ onSnapshot(
     render();
   },
   error => {
-    console.error("Payments could not be loaded:", error);
+    console.error(
+      "Payments could not be loaded:",
+      error
+    );
 
-    document.getElementById("alert").className = "alert bad";
-    document.getElementById("alertTitle").textContent =
+    const alertBox =
+      document.getElementById("alert");
+
+    alertBox.className =
+      "alert bad";
+
+    document.getElementById(
+      "alertTitle"
+    ).textContent =
       "Connection error";
-    document.getElementById("alertText").textContent =
+
+    document.getElementById(
+      "alertText"
+    ).textContent =
       "The shared payment status could not be loaded.";
   }
 );
