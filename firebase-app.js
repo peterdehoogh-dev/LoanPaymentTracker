@@ -32,7 +32,10 @@ const database = getFirestore(firebaseApp);
 const authentication = getAuth(firebaseApp);
 
 const paymentDocument = doc(database, "loan", "payments");
-
+const updatedPayments = {
+  ...paid,
+  [paymentNumber]: checkbox.checked
+};
 
 const PRINCIPAL = 10000;
 const MONTHLY_RATE = 0.083 / 12;
