@@ -32,10 +32,17 @@ const database = getFirestore(firebaseApp);
 const authentication = getAuth(firebaseApp);
 
 const paymentDocument = doc(database, "loan", "payments");
-const updatedPayments = {
-  ...paid,
-  [checkbox.dataset.number]: checkbox.checked
-};
+const ADMIN_UID = "dHZuYi41gXNgoNvOSGjR5t2LjZ23";
+
+const firebaseApp = initializeApp(firebaseConfig);
+const database = getFirestore(firebaseApp);
+const authentication = getAuth(firebaseApp);
+
+const paymentDocument = doc(database, "loan", "payments");
+
+const PRINCIPAL = 10000;
+const MONTHLY_RATE = 0.083 / 12;
+const MONTHLY_PAYMENT = 176;
 
 const PRINCIPAL = 10000;
 const MONTHLY_RATE = 0.083 / 12;
