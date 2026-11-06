@@ -34,7 +34,7 @@ const authentication = getAuth(firebaseApp);
 const paymentDocument = doc(database, "loan", "payments");
 const updatedPayments = {
   ...paid,
-  [paymentNumber]: checkbox.checked
+  [checkbox.dataset.number]: checkbox.checked
 };
 
 const PRINCIPAL = 10000;
